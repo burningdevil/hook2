@@ -14,6 +14,8 @@ const privateKey = fs.readFileSync(privateKeyPath, 'utf8')
 const secret = process.env.WEBHOOK_SECRET
 const enterpriseHostname = process.env.ENTERPRISE_HOSTNAME
 const messageForNewPRs = fs.readFileSync('./message.md', 'utf8')
+const clientID = process.env.CLIENT_ID
+const clientSECRET = process.env.CLIENT_SECRET
 
 // Create an authenticated Octokit client authenticated as a GitHub App
 const app = new App({
@@ -21,6 +23,10 @@ const app = new App({
   privateKey,
   webhooks: {
     secret
+  },
+  oauth: {
+    clientId: clientID,
+    clientSecret: clientSECRET
   },
   ...(enterpriseHostname && {
     Octokit: Octokit.defaults({
@@ -35,8 +41,7 @@ const { data } = await app.octokit.request('/app')
 // Read more about custom logging: https://github.com/octokit/core.js#logging
 app.octokit.log.debug(`Authenticated as '${data.name}'`)
 
-// Subscribe to the "pull_request.opened" webhook event
-app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
+const onOpen = async ({ octokit, payload }) => {
   console.log(`Received a pull request event for #${payload.pull_request.number}`)
   try {
     await octokit.rest.issues.createComment({
@@ -52,7 +57,11 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       console.error(error)
     }
   }
-})
+}
+
+// Subscribe to the "pull_request.opened" webhook event
+app.webhooks.on('pull_request.opened', onOpen)
+app.webhooks.on('pull_request.reopened', onOpen)
 
 // Optional: Handle errors
 app.webhooks.onError((error) => {
@@ -62,6 +71,10 @@ app.webhooks.onError((error) => {
   } else {
     console.log(error)
   }
+})
+
+app.webhooks.onAny( event => {
+  console.log(event)
 })
 
 // Launch a web server to listen for GitHub webhooks
